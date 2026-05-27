@@ -433,24 +433,53 @@ async function testConnection() {
   if (!url) { showToast('請先填入 GAS 網址', 'error'); return; }
 
   const btn = document.getElementById('test-connection-btn');
-  btn.textContent = '測試中…';
+  btn.textContent = '診斷中…';
   btn.disabled = true;
+
+  const origUrl = state.gasUrl;
+  state.gasUrl = url;
+
   try {
-    const origUrl = state.gasUrl;
-    state.gasUrl = url;
-    const data = await apiGet('getRecords');
+    // 先 ping
+    const ping = await apiGet('ping');
+    if (!ping.success) throw new Error(ping.error || '無回應');
+
+    // 再診斷試算表
+    const diag = await apiGet('diagnose');
     state.gasUrl = origUrl;
-    if (data.success) {
-      showToast(`連線成功！共 ${data.records.length} 筆記錄`, 'success');
+
+    if (diag.sheetAccess) {
+      document.getElementById('gas-url').value = url;
+      state.gasUrl = url;
+      localStorage.setItem('gasUrl', url);
+      showToast(`✅ 連線成功！試算表：${diag.sheetName}，共 ${diag.recordCount} 筆記錄`, 'success');
     } else {
-      throw new Error(data.error || '回應格式錯誤');
+      const errMsg = diag.error || '無法存取試算表';
+      showDiagnosticError(errMsg, diag);
     }
   } catch (err) {
-    showToast('連線失敗：' + err.message, 'error');
+    state.gasUrl = origUrl;
+    const msg = err.message || '';
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')) {
+      showToast('❌ 網路錯誤：請確認 GAS 網址正確，且部署時存取權限設為「所有人」', 'error');
+    } else {
+      showToast('❌ ' + msg, 'error');
+    }
   } finally {
     btn.textContent = '測試連線';
     btn.disabled = false;
   }
+}
+
+function showDiagnosticError(errMsg, diag) {
+  let hint = '';
+  if (errMsg.includes('SHEET_ID') || errMsg.includes('找不到 Google Sheet')) {
+    hint = '\n\n👉 解決方式：從 Google Sheet 內部開啟 Apps Script（擴充功能→Apps Script），或在 Code.gs 的 CONFIG.SHEET_ID 填入試算表 ID。';
+  } else if (errMsg.includes('openById')) {
+    hint = '\n\n👉 SHEET_ID 設定錯誤，請重新複製試算表 ID（網址中 /d/ 後面的部分）。';
+  }
+  showToast('❌ 試算表存取失敗：' + errMsg + hint, 'error');
+  console.error('診斷結果：', diag);
 }
 
 function exportCSV() {

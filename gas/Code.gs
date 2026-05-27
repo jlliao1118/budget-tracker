@@ -1,17 +1,14 @@
 // ============================================================
-//  我的記帳本 — Google Apps Script 後端
-//  1. 複製此檔內容到你的 Apps Script 專案
-//  2. 填寫下方 CONFIG 設定
-//  3. 部署為「網路應用程式」，存取權限選「所有人」
-//  4. 將部署網址填入前端設定頁面
+//  我的記帳本 — Google Apps Script 後端 v2
 // ============================================================
 
 const CONFIG = {
-  // 你的 Google Sheet ID（從網址複製，docs.google.com/spreadsheets/d/【這裡】/edit）
-  // 若 GAS 是從 Sheet 內「擴充功能→Apps Script」開啟的，可留空字串
+  // 你的 Google Sheet ID（從網址複製）
+  // 範例：https://docs.google.com/spreadsheets/d/【這裡就是ID】/edit
+  // 若是從 Sheet 內「擴充功能→Apps Script」開啟的，可留空字串
   SHEET_ID: '',
 
-  // LINE Channel Access Token（從 LINE Developers 取得，選填）
+  // LINE Channel Access Token（選填）
   LINE_CHANNEL_ACCESS_TOKEN: '',
 };
 
@@ -27,7 +24,6 @@ const EXPENSE_KEYWORDS = {
   '生活': ['洗衣','理髮','美髮','指甲','保養','健身','gym'],
 };
 
-// ── 收入分類關鍵字 ────────────────────────────────────────
 const INCOME_KEYWORDS = {
   '薪資': ['薪水','薪資','工資','月薪','底薪'],
   '獎金': ['獎金','紅包','紅利','年終'],
@@ -39,79 +35,152 @@ const INCOME_KEYWORDS = {
 // ── HTTP 進入點 ───────────────────────────────────────────
 
 function doGet(e) {
-  const action = e.parameter.action || '';
+  // 允許所有跨來源請求
+  const output = handleGet(e);
+  return output;
+}
+
+function handleGet(e) {
+  const action = (e.parameter && e.parameter.action) ? e.parameter.action : 'ping';
   let result;
+
   try {
     switch (action) {
-      case 'getRecords':   result = getRecords(e.parameter);    break;
-      case 'addRecord':    result = addRecord(e.parameter);     break;
-      case 'deleteRecord': result = deleteRecord(e.parameter.id); break;
-      default:             result = { success: true, message: '記帳系統運作中 ✅' };
+      case 'ping':        result = { success: true, message: '記帳系統運作中 ✅', version: 2 }; break;
+      case 'diagnose':    result = diagnose();                       break;
+      case 'getRecords':  result = getRecords(e.parameter);         break;
+      case 'addRecord':   result = addRecord(e.parameter);          break;
+      case 'deleteRecord':result = deleteRecord(e.parameter.id);    break;
+      default:            result = { success: false, error: '未知指令: ' + action };
     }
   } catch (err) {
+    console.error('doGet error [' + action + ']:', err.message, err.stack);
     result = { success: false, error: err.message };
   }
-  return jsonResponse(result);
+
+  return ContentService
+    .createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
 
-    // LINE Webhook 事件包含 events 陣列
+    // LINE Webhook（含有 events 陣列）
     if (body && body.events) {
       handleLineWebhook(body);
       return ContentService.createTextOutput('OK');
     }
 
-    // 前端 POST（備用，主要用 GET）
+    // 前端 POST 備用路徑
     let result;
     switch (body.action) {
-      case 'addRecord': result = addRecord(body); break;
-      default:          result = { success: false, error: '未知動作' };
+      case 'addRecord':    result = addRecord(body);          break;
+      case 'deleteRecord': result = deleteRecord(body.id);   break;
+      default: result = { success: false, error: '未知指令' };
     }
-    return jsonResponse(result);
+    return ContentService
+      .createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
-    return jsonResponse({ success: false, error: err.message });
+    console.error('doPost error:', err.message);
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: false, error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
   }
 }
 
-function jsonResponse(data) {
-  return ContentService
-    .createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
+// ── 診斷函式 ─────────────────────────────────────────────
+
+function diagnose() {
+  const info = {
+    success: true,
+    timestamp: new Date().toISOString(),
+    scriptType: '',
+    sheetAccess: false,
+    sheetName: '',
+    sheetId: '',
+    recordCount: 0,
+    configSheetId: CONFIG.SHEET_ID || '(未設定)',
+    error: null,
+  };
+
+  try {
+    // 判斷是 container-bound 還是 standalone
+    try {
+      const bound = SpreadsheetApp.getActiveSpreadsheet();
+      info.scriptType = bound ? 'container-bound' : 'standalone';
+    } catch (e) {
+      info.scriptType = 'standalone';
+    }
+
+    const ss = getSpreadsheet();
+    info.sheetAccess = true;
+    info.sheetId = ss.getId();
+    info.sheetName = ss.getName();
+
+    const sheet = ss.getSheetByName('Records');
+    if (sheet) {
+      info.recordCount = Math.max(0, sheet.getLastRow() - 1);
+    }
+  } catch (err) {
+    info.success = false;
+    info.error = err.message;
+  }
+
+  return info;
 }
 
 // ── Google Sheets 操作 ───────────────────────────────────
 
-function getSheet() {
-  const ss = CONFIG.SHEET_ID
-    ? SpreadsheetApp.openById(CONFIG.SHEET_ID)
-    : SpreadsheetApp.getActiveSpreadsheet();
+function getSpreadsheet() {
+  // 優先使用 CONFIG.SHEET_ID
+  if (CONFIG.SHEET_ID && CONFIG.SHEET_ID.trim() !== '') {
+    try {
+      return SpreadsheetApp.openById(CONFIG.SHEET_ID.trim());
+    } catch (e) {
+      throw new Error('無法用 SHEET_ID 開啟試算表（' + CONFIG.SHEET_ID + '）：' + e.message);
+    }
+  }
 
-  if (!ss) throw new Error('找不到 Google Sheet，請確認 SHEET_ID 設定是否正確');
+  // 嘗試 container-bound 方式
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (ss) return ss;
+  } catch (e) {
+    // ignore
+  }
+
+  throw new Error(
+    '找不到 Google Sheet！\n' +
+    '請在 Code.gs 的 CONFIG.SHEET_ID 填入你的試算表 ID。\n' +
+    '試算表網址：https://docs.google.com/spreadsheets/d/【ID在這裡】/edit'
+  );
+}
+
+function getSheet() {
+  const ss = getSpreadsheet();
 
   let sheet = ss.getSheetByName('Records');
   if (!sheet) {
     sheet = ss.insertSheet('Records');
-    sheet.getRange(1, 1, 1, 8).setValues([[
-      'ID', 'Date', 'Type', 'Category', 'Description', 'Amount', 'Source', 'CreatedAt'
-    ]]);
+    const header = [['ID','Date','Type','Category','Description','Amount','Source','CreatedAt']];
+    sheet.getRange(1, 1, 1, 8).setValues(header);
     sheet.setFrozenRows(1);
-    // 格式化標題行
     sheet.getRange(1, 1, 1, 8)
       .setBackground('#6C63FF')
       .setFontColor('#FFFFFF')
       .setFontWeight('bold');
+    console.log('已自動建立 Records 工作表');
   }
   return sheet;
 }
 
 function getRecords(params) {
-  const sheet = getSheet();
+  const sheet   = getSheet();
   const lastRow = sheet.getLastRow();
-
   if (lastRow <= 1) return { success: true, records: [] };
 
   const data = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
@@ -131,25 +200,24 @@ function getRecords(params) {
       createdAt:   row[7] instanceof Date ? row[7].toISOString() : String(row[7]),
     }));
 
-  // 依月份篩選（可選）
   if (params && params.month) {
     records = records.filter(r => r.date.startsWith(params.month));
   }
 
-  // 依日期降冪排序
   records.sort((a, b) => b.date.localeCompare(a.date));
-
   return { success: true, records };
 }
 
 function addRecord(params) {
-  const sheet   = getSheet();
-  const now     = new Date();
-  const id      = now.getTime(); // 用時間戳作為 ID，確保唯一性
-  const date    = params.date || Utilities.formatDate(now, 'Asia/Taipei', 'yyyy-MM-dd');
-  const amount  = parseFloat(params.amount) || 0;
+  if (!params.amount) return { success: false, error: '缺少 amount 參數' };
 
-  if (amount <= 0) return { success: false, error: '金額必須大於 0' };
+  const amount = parseFloat(String(params.amount).replace(/,/g, ''));
+  if (isNaN(amount) || amount <= 0) return { success: false, error: '金額必須大於 0，收到：' + params.amount };
+
+  const sheet = getSheet();
+  const now   = new Date();
+  const id    = now.getTime();
+  const date  = params.date || Utilities.formatDate(now, 'Asia/Taipei', 'yyyy-MM-dd');
 
   sheet.appendRow([
     id,
@@ -162,6 +230,7 @@ function addRecord(params) {
     now.toISOString(),
   ]);
 
+  console.log('新增記錄成功: id=' + id + ', amount=' + amount + ', type=' + params.type);
   return { success: true, message: '新增成功', id: String(id) };
 }
 
@@ -172,41 +241,34 @@ function deleteRecord(id) {
   const lastRow = sheet.getLastRow();
   if (lastRow <= 1) return { success: false, error: '找不到記錄' };
 
-  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues().flat();
+  const ids    = sheet.getRange(2, 1, lastRow - 1, 1).getValues().flat();
   const rowIdx = ids.findIndex(v => String(v) === String(id));
+  if (rowIdx === -1) return { success: false, error: '找不到 ID: ' + id };
 
-  if (rowIdx === -1) return { success: false, error: '找不到記錄' };
-
-  sheet.deleteRow(rowIdx + 2); // +2: 標題列 + 0-based index
+  sheet.deleteRow(rowIdx + 2);
   return { success: true, message: '刪除成功' };
 }
 
-// ── LINE Webhook 處理 ─────────────────────────────────────
+// ── LINE Webhook ──────────────────────────────────────────
 
 function handleLineWebhook(body) {
   const events = body.events || [];
   events.forEach(event => {
     if (event.type !== 'message' || event.message.type !== 'text') return;
-
     const text       = event.message.text.trim();
     const replyToken = event.replyToken;
 
     if (text === '查詢' || text === '本月' || text === '餘額') {
-      // 本月統計
-      const ym      = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM');
+      const ym = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM');
       const { records } = getRecords({ month: ym });
       let income = 0, expense = 0;
-      records.forEach(r => {
-        if (r.type === '收入') income  += r.amount;
-        else                   expense += r.amount;
-      });
-      const reply = [
-        `📊 本月統計（${ym.replace('-', '年')}月）`,
-        `💰 收入：$${income.toLocaleString()}`,
-        `💸 支出：$${expense.toLocaleString()}`,
-        `📈 結餘：$${(income - expense).toLocaleString()}`,
-      ].join('\n');
-      replyLine(replyToken, reply);
+      records.forEach(r => { if (r.type === '收入') income += r.amount; else expense += r.amount; });
+      replyLine(replyToken, [
+        '📊 本月統計（' + ym.replace('-','年') + '月）',
+        '💰 收入：$' + income.toLocaleString(),
+        '💸 支出：$' + expense.toLocaleString(),
+        '📈 結餘：$' + (income - expense).toLocaleString(),
+      ].join('\n'));
       return;
     }
 
@@ -222,50 +284,42 @@ function handleLineWebhook(body) {
       });
       const sign  = parsed.type === '支出' ? '-' : '+';
       const emoji = parsed.type === '支出' ? '💸' : '💰';
-      const reply = [
-        `✅ 已記錄`,
-        `${emoji} ${parsed.description}`,
-        `分類：${parsed.category}`,
-        `金額：${sign}$${parsed.amount.toLocaleString()}`,
-      ].join('\n');
-      replyLine(replyToken, reply);
+      replyLine(replyToken, [
+        '✅ 已記錄',
+        emoji + ' ' + parsed.description,
+        '分類：' + parsed.category,
+        '金額：' + sign + '$' + parsed.amount.toLocaleString(),
+      ].join('\n'));
     } else {
       replyLine(replyToken, [
-        '❌ 格式有誤，請使用以下格式：',
+        '❌ 格式有誤，請使用：',
         '',
-        '📝 範例：',
         '  晚餐 60',
         '  捷運票 30元',
         '  薪水 50000',
         '',
-        '🔍 查詢本月統計，輸入「查詢」',
+        '輸入「查詢」看本月統計',
       ].join('\n'));
     }
   });
 }
 
 function parseLineMessage(text) {
-  // 移除貨幣符號
-  const cleaned = text.replace(/NT\$|＄|\$/gi, '').trim();
-
-  // 擷取金額（數字＋可選的「元」）
+  const cleaned     = text.replace(/NT\$|＄|\$/gi, '').trim();
   const amountMatch = cleaned.match(/(\d[\d,]*\.?\d*)\s*元?/);
   if (!amountMatch) return null;
 
-  const amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+  const amount      = parseFloat(amountMatch[1].replace(/,/g, ''));
   if (amount <= 0) return null;
 
-  // 移除金額部分，剩餘為描述
   const description = cleaned.replace(amountMatch[0], '').replace(/\s+/g, ' ').trim();
 
-  // 判斷收入
   for (const [cat, keywords] of Object.entries(INCOME_KEYWORDS)) {
     if (keywords.some(kw => cleaned.toLowerCase().includes(kw))) {
       return { type: '收入', category: cat, description: description || '收入', amount };
     }
   }
 
-  // 判斷支出分類
   let category = '其他';
   for (const [cat, keywords] of Object.entries(EXPENSE_KEYWORDS)) {
     if (keywords.some(kw => cleaned.toLowerCase().includes(kw.toLowerCase()))) {
@@ -274,28 +328,19 @@ function parseLineMessage(text) {
     }
   }
 
-  return {
-    type:        '支出',
-    category,
-    description: description || category,
-    amount,
-  };
+  return { type: '支出', category, description: description || category, amount };
 }
 
 function replyLine(replyToken, text) {
   if (!CONFIG.LINE_CHANNEL_ACCESS_TOKEN) return;
   try {
     UrlFetchApp.fetch('https://api.line.me/v2/bot/message/reply', {
-      method:      'post',
-      contentType: 'application/json',
-      headers:     { 'Authorization': 'Bearer ' + CONFIG.LINE_CHANNEL_ACCESS_TOKEN },
-      payload:     JSON.stringify({
-        replyToken,
-        messages: [{ type: 'text', text }],
-      }),
+      method: 'post', contentType: 'application/json',
+      headers: { 'Authorization': 'Bearer ' + CONFIG.LINE_CHANNEL_ACCESS_TOKEN },
+      payload: JSON.stringify({ replyToken, messages: [{ type: 'text', text }] }),
       muteHttpExceptions: true,
     });
   } catch (e) {
-    Logger.log('LINE reply error: ' + e.message);
+    console.error('LINE reply error:', e.message);
   }
 }
