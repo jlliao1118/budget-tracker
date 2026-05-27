@@ -76,15 +76,40 @@ function showToast(msg, type = '') {
   toastTimer = setTimeout(() => { el.className = 'toast'; }, 2800);
 }
 
-// ── API ───────────────────────────────────────────────────
+// ── API（JSONP，完全繞過 CORS）────────────────────────────
+function jsonpRequest(urlStr) {
+  return new Promise((resolve, reject) => {
+    const cbName = 'gasCallback_' + Date.now() + '_' + Math.floor(Math.random() * 9999);
+    const script = document.createElement('script');
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('請求逾時（15 秒），請確認 GAS 網址是否正確'));
+    }, 15000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[cbName] = (data) => { cleanup(); resolve(data); };
+    script.onerror = () => { cleanup(); reject(new Error('無法載入 GAS 網址，請確認網址結尾為 /exec')); };
+
+    const sep = urlStr.includes('?') ? '&' : '?';
+    script.src = urlStr + sep + 'callback=' + cbName;
+    document.head.appendChild(script);
+  });
+}
+
 async function apiGet(action, params = {}) {
   if (!state.gasUrl) throw new Error('請先在設定頁填入 GAS 網址');
   const url = new URL(state.gasUrl);
   url.searchParams.set('action', action);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) url.searchParams.set(k, v);
+  });
+  return jsonpRequest(url.toString());
 }
 
 async function loadAllRecords() {

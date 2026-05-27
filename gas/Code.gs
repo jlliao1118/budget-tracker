@@ -35,31 +35,35 @@ const INCOME_KEYWORDS = {
 // ── HTTP 進入點 ───────────────────────────────────────────
 
 function doGet(e) {
-  // 允許所有跨來源請求
-  const output = handleGet(e);
-  return output;
-}
-
-function handleGet(e) {
-  const action = (e.parameter && e.parameter.action) ? e.parameter.action : 'ping';
+  const action   = (e.parameter && e.parameter.action)   ? e.parameter.action   : 'ping';
+  const callback = (e.parameter && e.parameter.callback) ? e.parameter.callback : null;
   let result;
 
   try {
     switch (action) {
-      case 'ping':        result = { success: true, message: '記帳系統運作中 ✅', version: 2 }; break;
-      case 'diagnose':    result = diagnose();                       break;
-      case 'getRecords':  result = getRecords(e.parameter);         break;
-      case 'addRecord':   result = addRecord(e.parameter);          break;
-      case 'deleteRecord':result = deleteRecord(e.parameter.id);    break;
-      default:            result = { success: false, error: '未知指令: ' + action };
+      case 'ping':         result = { success: true, message: '記帳系統運作中 ✅', version: 2 }; break;
+      case 'diagnose':     result = diagnose();                        break;
+      case 'getRecords':   result = getRecords(e.parameter);          break;
+      case 'addRecord':    result = addRecord(e.parameter);           break;
+      case 'deleteRecord': result = deleteRecord(e.parameter.id);     break;
+      default:             result = { success: false, error: '未知指令: ' + action };
     }
   } catch (err) {
     console.error('doGet error [' + action + ']:', err.message, err.stack);
     result = { success: false, error: err.message };
   }
 
+  const jsonStr = JSON.stringify(result);
+
+  // JSONP 模式：繞過瀏覽器 CORS 限制
+  if (callback) {
+    return ContentService
+      .createTextOutput(callback + '(' + jsonStr + ');')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+
   return ContentService
-    .createTextOutput(JSON.stringify(result))
+    .createTextOutput(jsonStr)
     .setMimeType(ContentService.MimeType.JSON);
 }
 
