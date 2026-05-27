@@ -29,9 +29,12 @@ const CHART_COLORS = [
   '#00B894','#00CEC9','#FDCB6E','#6C5CE7',
 ];
 
+// ── 預設 GAS 網址（已綁定你的部署，無需每次重新輸入）────────
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxK9VvGbqQKLjPrqYK2YPiXyFwFrUY6ILXNR-QoAmihbB5FuTxOXffA2hUheadoA3WBkg/exec';
+
 // ── 應用狀態 ──────────────────────────────────────────────
 const state = {
-  gasUrl:        localStorage.getItem('gasUrl') || '',
+  gasUrl:        localStorage.getItem('gasUrl') || DEFAULT_GAS_URL,
   records:       [],
   currentMonth:  todayYM(),
   recFilter:     'all',
