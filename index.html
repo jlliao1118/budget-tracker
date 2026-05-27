@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>我的記帳本</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div id="app">
+
+    <!-- 頁首 -->
+    <header id="app-header">
+      <div class="header-inner">
+        <h1 id="page-title">總覽</h1>
+        <div id="header-actions">
+          <span id="header-month-display" class="month-chip"></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- 主內容 -->
+    <main id="main-content">
+
+      <!-- ── 總覽頁面 ── -->
+      <section id="page-dashboard" class="page active">
+
+        <!-- 月份切換 -->
+        <div class="month-nav-bar">
+          <button class="month-btn" id="dash-prev-month">‹</button>
+          <span id="dash-month-display" class="month-title"></span>
+          <button class="month-btn" id="dash-next-month">›</button>
+        </div>
+
+        <!-- 結餘卡片 -->
+        <div class="balance-card">
+          <p class="balance-label">本月結餘</p>
+          <h2 id="balance-amount" class="balance-amount">$0</h2>
+          <div class="balance-row">
+            <div class="balance-item income-item">
+              <div class="bi-icon income-icon">↑</div>
+              <div>
+                <p class="bi-label">收入</p>
+                <p id="income-amount" class="bi-amount income-color">$0</p>
+              </div>
+            </div>
+            <div class="divider-v"></div>
+            <div class="balance-item expense-item">
+              <div class="bi-icon expense-icon">↓</div>
+              <div>
+                <p class="bi-label">支出</p>
+                <p id="expense-amount" class="bi-amount expense-color">$0</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 支出分類圖 -->
+        <div class="chart-card">
+          <h3 class="card-title">本月支出分類</h3>
+          <div class="chart-wrap doughnut-wrap">
+            <canvas id="category-chart"></canvas>
+          </div>
+          <div id="category-legend" class="legend-grid"></div>
+        </div>
+
+        <!-- 六個月趨勢 -->
+        <div class="chart-card">
+          <h3 class="card-title">近 6 個月趨勢</h3>
+          <div class="chart-wrap bar-wrap">
+            <canvas id="trend-chart"></canvas>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ── 記錄頁面 ── -->
+      <section id="page-records" class="page">
+
+        <div class="records-controls">
+          <div class="month-nav-bar">
+            <button class="month-btn" id="rec-prev-month">‹</button>
+            <span id="rec-month-display" class="month-title"></span>
+            <button class="month-btn" id="rec-next-month">›</button>
+          </div>
+          <div class="type-filter-row">
+            <button class="filter-chip active" data-filter="all">全部</button>
+            <button class="filter-chip" data-filter="支出">支出</button>
+            <button class="filter-chip" data-filter="收入">收入</button>
+          </div>
+        </div>
+
+        <div id="records-summary-bar" class="records-summary-bar">
+          <span id="rec-summary-income" class="rs-income">收入 $0</span>
+          <span id="rec-summary-expense" class="rs-expense">支出 $0</span>
+        </div>
+
+        <div id="records-list" class="records-list">
+          <div class="empty-state">載入中…</div>
+        </div>
+
+      </section>
+
+      <!-- ── 新增頁面 ── -->
+      <section id="page-add" class="page">
+        <div class="add-form-card">
+
+          <!-- 支出 / 收入 切換 -->
+          <div class="type-toggle">
+            <button class="type-btn active" data-type="支出">支出</button>
+            <button class="type-btn" data-type="收入">收入</button>
+          </div>
+
+          <!-- 分類 -->
+          <div class="form-group">
+            <label class="form-label">分類</label>
+            <div id="category-grid" class="category-grid"></div>
+          </div>
+
+          <!-- 描述 -->
+          <div class="form-group">
+            <label class="form-label" for="input-description">描述</label>
+            <input type="text" id="input-description" class="form-input"
+                   placeholder="例如：午餐、捷運票…" maxlength="50" autocomplete="off">
+          </div>
+
+          <!-- 金額 -->
+          <div class="form-group">
+            <label class="form-label" for="input-amount">金額</label>
+            <div class="amount-wrap">
+              <span class="currency-sign">$</span>
+              <input type="number" id="input-amount" class="form-input amount-input"
+                     placeholder="0" min="0" step="1" inputmode="numeric">
+            </div>
+          </div>
+
+          <!-- 日期 -->
+          <div class="form-group">
+            <label class="form-label" for="input-date">日期</label>
+            <input type="date" id="input-date" class="form-input">
+          </div>
+
+          <button id="submit-btn" class="primary-btn">記錄</button>
+
+        </div>
+      </section>
+
+      <!-- ── 設定頁面 ── -->
+      <section id="page-settings" class="page">
+
+        <div class="settings-card">
+          <h3 class="settings-title">Google Apps Script 網址</h3>
+          <div class="form-group">
+            <label class="form-label" for="gas-url">GAS 部署網址</label>
+            <input type="url" id="gas-url" class="form-input"
+                   placeholder="https://script.google.com/macros/s/…/exec">
+            <p class="hint-text">填入部署後取得的 Web App 網址</p>
+          </div>
+          <div class="btn-row">
+            <button id="save-settings-btn" class="primary-btn">儲存</button>
+            <button id="test-connection-btn" class="secondary-btn">測試連線</button>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3 class="settings-title">📋 設定步驟</h3>
+          <ol class="guide-list">
+            <li>開啟你的 Google Sheet，點選上方選單「擴充功能」→「Apps Script」</li>
+            <li>刪除預設程式碼，將 <code>gas/Code.gs</code> 的內容全部貼上</li>
+            <li>在 <code>CONFIG</code> 中填入你的 Google Sheet ID（網址中的長字串）</li>
+            <li>點擊「部署」→「新增部署作業」→ 類型選「網路應用程式」</li>
+            <li>執行身分選「我」，存取權限選「所有人」，按下「部署」</li>
+            <li>複製取得的 Web App 網址，貼到上方欄位</li>
+          </ol>
+        </div>
+
+        <div class="settings-card">
+          <h3 class="settings-title">💬 LINE Bot 設定</h3>
+          <ol class="guide-list">
+            <li>前往 <a href="https://developers.line.biz" target="_blank" rel="noopener">LINE Developers</a> 建立 Provider 及 Messaging API Channel</li>
+            <li>在 Channel 設定中取得「Channel Access Token」（長期）</li>
+            <li>將 Token 貼到 Code.gs 的 <code>LINE_CHANNEL_ACCESS_TOKEN</code></li>
+            <li>在 LINE 後台「Messaging API」→ 填入 Webhook URL（你的 GAS 網址）</li>
+            <li>開啟「Use webhook」並關閉「Auto-reply messages」</li>
+            <li>重新部署 GAS（版本選「新版本」）</li>
+          </ol>
+          <div class="line-tip">
+            <p class="tip-title">LINE 記帳格式範例：</p>
+            <div class="tip-examples">
+              <code>晚餐 60</code> → 支出 $60<br>
+              <code>捷運票 30元</code> → 支出 $30<br>
+              <code>薪水 50000</code> → 收入 $50,000<br>
+              <code>查詢</code> → 本月統計
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3 class="settings-title">資料管理</h3>
+          <div class="btn-row">
+            <button id="export-btn" class="secondary-btn">匯出 CSV</button>
+            <button id="refresh-btn" class="secondary-btn">重新載入</button>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- 底部導航 -->
+    <nav id="bottom-nav">
+      <button class="nav-btn active" data-page="dashboard">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">總覽</span>
+      </button>
+      <button class="nav-btn" data-page="records">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label">記錄</span>
+      </button>
+      <button class="nav-btn nav-btn-add" data-page="add">
+        <span class="add-circle">+</span>
+        <span class="nav-label">新增</span>
+      </button>
+      <button class="nav-btn" data-page="settings">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label">設定</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- Toast 提示 -->
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
