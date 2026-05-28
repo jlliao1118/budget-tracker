@@ -151,16 +151,27 @@
       <section id="page-settings" class="page">
 
         <div class="settings-card">
-          <h3 class="settings-title">Google Apps Script 網址</h3>
+          <h3 class="settings-title">🔐 連線設定</h3>
           <div class="form-group">
             <label class="form-label" for="gas-url">GAS 部署網址</label>
             <input type="url" id="gas-url" class="form-input"
                    placeholder="https://script.google.com/macros/s/…/exec">
-            <p class="hint-text">填入部署後取得的 Web App 網址</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="api-key">API 金鑰（密碼）</label>
+            <input type="password" id="api-key" class="form-input"
+                   placeholder="在 GAS 的 CONFIG.API_KEY 設定的密碼">
+            <p class="hint-text">自訂一組密碼，填在 GAS 和這裡。沒有密碼就無法存取你的資料。</p>
           </div>
           <div class="btn-row">
             <button id="save-settings-btn" class="primary-btn">儲存</button>
             <button id="test-connection-btn" class="secondary-btn">測試連線</button>
+          </div>
+          <div style="margin-top:12px">
+            <button id="gen-bookmark-btn" class="secondary-btn" style="width:100%">
+              📱 產生手機書籤連結
+            </button>
+            <p class="hint-text">產生後複製連結，在手機瀏覽器加入書籤。以後開書籤就自動登入，不需重新設定。</p>
           </div>
         </div>
 

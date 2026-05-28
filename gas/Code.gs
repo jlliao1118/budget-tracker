@@ -4,12 +4,15 @@
 
 const CONFIG = {
   // 你的 Google Sheet ID（從網址複製）
-  // 範例：https://docs.google.com/spreadsheets/d/【這裡就是ID】/edit
   // 若是從 Sheet 內「擴充功能→Apps Script」開啟的，可留空字串
   SHEET_ID: '',
 
   // LINE Channel Access Token（選填）
   LINE_CHANNEL_ACCESS_TOKEN: '',
+
+  // ★ API 金鑰（重要！自訂一組密碼，前端設定頁也要填入同樣的密碼）
+  // 沒有正確金鑰的請求將被拒絕，保護你的記帳資料不被外人讀取
+  API_KEY: '',
 };
 
 // ── 支出分類關鍵字 ────────────────────────────────────────
@@ -37,16 +40,24 @@ const INCOME_KEYWORDS = {
 function doGet(e) {
   const action   = (e.parameter && e.parameter.action)   ? e.parameter.action   : 'ping';
   const callback = (e.parameter && e.parameter.callback) ? e.parameter.callback : null;
+  const reqKey   = (e.parameter && e.parameter.key)      ? e.parameter.key      : '';
   let result;
 
   try {
-    switch (action) {
-      case 'ping':         result = { success: true, message: '記帳系統運作中 ✅', version: 2 }; break;
-      case 'diagnose':     result = diagnose();                        break;
-      case 'getRecords':   result = getRecords(e.parameter);          break;
-      case 'addRecord':    result = addRecord(e.parameter);           break;
-      case 'deleteRecord': result = deleteRecord(e.parameter.id);     break;
-      default:             result = { success: false, error: '未知指令: ' + action };
+    // ping 不需要驗證（用於基本連線測試）
+    // 其他操作：若有設定 API_KEY，則必須驗證
+    const PROTECTED = ['diagnose', 'getRecords', 'addRecord', 'deleteRecord'];
+    if (PROTECTED.includes(action) && CONFIG.API_KEY && reqKey !== CONFIG.API_KEY) {
+      result = { success: false, error: '金鑰錯誤，請在設定頁輸入正確的 API 金鑰' };
+    } else {
+      switch (action) {
+        case 'ping':         result = { success: true, message: '記帳系統運作中 ✅', version: 3 }; break;
+        case 'diagnose':     result = diagnose();                        break;
+        case 'getRecords':   result = getRecords(e.parameter);          break;
+        case 'addRecord':    result = addRecord(e.parameter);           break;
+        case 'deleteRecord': result = deleteRecord(e.parameter.id);     break;
+        default:             result = { success: false, error: '未知指令: ' + action };
+      }
     }
   } catch (err) {
     console.error('doGet error [' + action + ']:', err.message, err.stack);

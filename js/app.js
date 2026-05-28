@@ -29,12 +29,24 @@ const CHART_COLORS = [
   '#00B894','#00CEC9','#FDCB6E','#6C5CE7',
 ];
 
-// ── 預設 GAS 網址（已綁定你的部署，無需每次重新輸入）────────
-const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxK9VvGbqQKLjPrqYK2YPiXyFwFrUY6ILXNR-QoAmihbB5FuTxOXffA2hUheadoA3WBkg/exec';
+// ── 從書籤連結讀取設定（若網址含 ?s= 參數）─────────────────
+(function loadFromBookmark() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const encoded = params.get('s');
+    if (!encoded) return;
+    const cfg = JSON.parse(atob(encoded));
+    if (cfg.gasUrl)  localStorage.setItem('gasUrl',  cfg.gasUrl);
+    if (cfg.apiKey)  localStorage.setItem('apiKey',  cfg.apiKey);
+    // 清除網址列上的參數，避免被看到
+    window.history.replaceState({}, '', window.location.pathname);
+  } catch (e) { /* 忽略格式錯誤 */ }
+})();
 
 // ── 應用狀態 ──────────────────────────────────────────────
 const state = {
-  gasUrl:        localStorage.getItem('gasUrl') || DEFAULT_GAS_URL,
+  gasUrl:        localStorage.getItem('gasUrl') || '',
+  apiKey:        localStorage.getItem('apiKey') || '',
   records:       [],
   currentMonth:  todayYM(),
   recFilter:     'all',
@@ -106,9 +118,10 @@ function jsonpRequest(urlStr) {
 }
 
 async function apiGet(action, params = {}) {
-  if (!state.gasUrl) throw new Error('請先在設定頁填入 GAS 網址');
+  if (!state.gasUrl) throw new Error('請先在設定頁填入 GAS 網址與 API 金鑰');
   const url = new URL(state.gasUrl);
   url.searchParams.set('action', action);
+  if (state.apiKey) url.searchParams.set('key', state.apiKey);
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== null) url.searchParams.set(k, v);
   });
@@ -454,6 +467,7 @@ async function submitRecord() {
 // ── 設定頁 ────────────────────────────────────────────────
 function renderSettings() {
   document.getElementById('gas-url').value = state.gasUrl;
+  document.getElementById('api-key').value  = state.apiKey;
 }
 
 async function testConnection() {
@@ -607,10 +621,27 @@ function init() {
   // 設定頁
   document.getElementById('save-settings-btn').addEventListener('click', () => {
     const url = document.getElementById('gas-url').value.trim();
+    const key = document.getElementById('api-key').value.trim();
     state.gasUrl = url;
+    state.apiKey = key;
     localStorage.setItem('gasUrl', url);
+    localStorage.setItem('apiKey', key);
     showToast('設定已儲存', 'success');
     if (url) loadAllRecords().then(() => { renderDashboard(); renderRecords(); });
+  });
+
+  // 產生手機書籤連結
+  document.getElementById('gen-bookmark-btn').addEventListener('click', () => {
+    const url = document.getElementById('gas-url').value.trim();
+    const key = document.getElementById('api-key').value.trim();
+    if (!url || !key) { showToast('請先填入 GAS 網址和 API 金鑰', 'error'); return; }
+    const encoded = btoa(JSON.stringify({ gasUrl: url, apiKey: key }));
+    const bookmarkUrl = window.location.origin + window.location.pathname + '?s=' + encoded;
+    navigator.clipboard.writeText(bookmarkUrl)
+      .then(() => showToast('✅ 書籤連結已複製！貼到手機瀏覽器並加入書籤', 'success'))
+      .catch(() => {
+        prompt('複製這個連結，在手機瀏覽器開啟後加入書籤：', bookmarkUrl);
+      });
   });
 
   document.getElementById('test-connection-btn').addEventListener('click', testConnection);
